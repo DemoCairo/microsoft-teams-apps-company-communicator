@@ -18,16 +18,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up .NET Core
+            - name: Set up .NET 6
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 'v6.0'
+          dotnet-version: '6.0.x'
 
-      - name: Build with dotnet
-        run: dotnet build --configuration Release
+      - name: Build solution under Source
+        shell: pwsh
+        run: |
+          $solution = Get-ChildItem -Path "Source" -Filter *.sln | Select-Object -First 1
+          if (-not $solution) {
+            Write-Host "No solution found under Source/*.sln"
+            Write-Host "Listing Source folder:"
+            Get-ChildItem -Path "Source" | Format-Table
+            exit 1
+          }
+          Write-Host "Using solution: $($solution.FullName)"
+          dotnet restore $solution.FullName
+          dotnet build $solution.FullName -c Release --no-restore
 
-      - name: dotnet publish
-        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+      - name: Publish web project (Microsoft.NET.Sdk.Web) under Source
+        shell: pwsh
+        run: |
+          $webProj = Get-ChildItem -Path "Source" -Recurse -Filter *.csproj |
+            Where-Object { Select-String -Path $_.FullName -Pattern "Microsoft.NET.Sdk.Web" -Quiet } |
+            Select-Object -First 1
+
+          if (-not $webProj) {
+            Write-Host "No web csproj found (Microsoft.NET.Sdk.Web) under Source"
+            Write-Host "Listing csproj files:"
+            Get-ChildItem -Path "Source" -Recurse -Filter *.csproj | Select-Object FullName
+            exit 1
+          }
+
+          Write-Host "Publishing web project: $($webProj.FullName)"
+          dotnet publish $webProj.FullName -c Release -o "${{env.DOTNET_ROOT}}\myapp"
+
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -62,4 +88,5 @@ jobs:
           app-name: 'democairo'
           slot-name: 'Production'
           package: .
+
           
