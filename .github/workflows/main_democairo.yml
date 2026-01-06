@@ -75,12 +75,13 @@ jobs:
           name: webapp
           path: .
 
-- name: Login to Azure
-  uses: azure/login@v2
-  with:
-    client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_f3afc4b6-bac2-486a-97c8-4bb690f99ba5 }}
-    tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_dfeb55c2-ed27-4a80-9238-f1e456d04bb8 }}
-    subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_66bbe765-5fb0-4e64-b653-1ae60ff28e55 }}
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets['AZUREAPPSERVICE_CLIENTID_f3afc4b6-bac2-486a-97c8-4bb690f99ba5'] }}
+          tenant-id: ${{ secrets['AZUREAPPSERVICE_TENANTID_dfeb55c2-ed27-4a80-9238-f1e456d04bb8'] }}
+          subscription-id: ${{ secrets['AZUREAPPSERVICE_SUBSCRIPTIONID_66bbe765-5fb0-4e64-b653-1ae60ff28e55'] }}
+
 
 
       - name: Deploy to Azure Web App
@@ -89,4 +90,5 @@ jobs:
           app-name: democairo
           slot-name: Production
           package: .
+
 
