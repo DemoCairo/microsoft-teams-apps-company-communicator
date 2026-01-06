@@ -1,6 +1,3 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
 name: Build and deploy ASP.Net Core app to Azure Web App - democairo
 
 on:
@@ -13,81 +10,81 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
 
-       - name: Set up .NET 6
+      # IMPORTANT: install the SDK your repo wants (global.json says 6.0.100)
+      - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '6.0.x'
+          dotnet-version: "6.0.100"
 
-      - name: Build solution under Source
+      # Find the solution automatically (so you don't need to guess paths)
+      - name: Locate solution file
         shell: pwsh
         run: |
-          $solution = Get-ChildItem -Path "Source" -Filter *.sln | Select-Object -First 1
-          if (-not $solution) {
-            Write-Host "No solution found under Source/*.sln"
-            Write-Host "Listing Source folder:"
-            Get-ChildItem -Path "Source" | Format-Table
-            exit 1
-          }
-          Write-Host "Using solution: $($solution.FullName)"
-          dotnet restore $solution.FullName
-          dotnet build $solution.FullName -c Release --no-restore
+          $sln = Get-ChildItem -Path . -Recurse -Filter *.sln | Select-Object -First 1
+          if (-not $sln) { Write-Error "No .sln file found in repo. Open repo and confirm the solution exists."; exit 1 }
+          "SLN_PATH=$($sln.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SLN_DIR=$($sln.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Using solution: $($sln.FullName)"
 
-      - name: Publish web project (Microsoft.NET.Sdk.Web) under Source
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore "$env:SLN_PATH"
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build "$env:SLN_PATH" -c Release --no-restore
+
+      # Try to auto-pick the first Web SDK project and publish it
+      - name: Locate web project (.NET Sdk Web)
         shell: pwsh
         run: |
-          $webProj = Get-ChildItem -Path "Source" -Recurse -Filter *.csproj |
+          $web = Get-ChildItem -Path $env:SLN_DIR -Recurse -Filter *.csproj |
             Where-Object { Select-String -Path $_.FullName -Pattern "Microsoft.NET.Sdk.Web" -Quiet } |
             Select-Object -First 1
 
-          if (-not $webProj) {
-            Write-Host "No web csproj found (Microsoft.NET.Sdk.Web) under Source"
-            Write-Host "Listing csproj files:"
-            Get-ChildItem -Path "Source" -Recurse -Filter *.csproj | Select-Object FullName
-            exit 1
-          }
+          if (-not $web) { Write-Error "No Web project (.NET Sdk Web) found. You must publish the correct csproj manually."; exit 1 }
+          "WEBPROJ_PATH=$($web.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Using web project: $($web.FullName)"
 
-          Write-Host "Publishing web project: $($webProj.FullName)"
-          dotnet publish $webProj.FullName -c Release -o "${{env.DOTNET_ROOT}}\myapp"
-
+      - name: Publish
+        shell: pwsh
+        run: dotnet publish "$env:WEBPROJ_PATH" -c Release -o "${{ env.DOTNET_ROOT }}\myapp" --no-build
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
-          name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
+          name: webapp
+          path: ${{ env.DOTNET_ROOT }}\myapp
 
   deploy:
     runs-on: windows-latest
     needs: build
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write
+      contents: read
 
     steps:
-      - name: Download artifact from build job
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: .net-app
-      
+          name: webapp
+          path: .
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_5455B2F63D5E4861B13B0125AEDADF17 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1054ADC5276748E2BEA1D838353DA0E3 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_327AFB66B00C416193B75FBDB4A7871E }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
 
       - name: Deploy to Azure Web App
-        id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'democairo'
-          slot-name: 'Production'
+          app-name: democairo
+          slot-name: Production
           package: .
-
-          
-
