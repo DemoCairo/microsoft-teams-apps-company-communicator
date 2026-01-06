@@ -74,13 +74,22 @@ jobs:
         with:
           name: webapp
           path: .
+      - name: Debug - are secrets available?
+        shell: pwsh
+        run: |
+          if ("${{ secrets.AZUREAPPSERVICE_CLIENTID_5455B2F63D5E4861B13B0125AEDADF17 }}" -eq "") { throw "CLIENTID secret is empty / not available" }
+          if ("${{ secrets.AZUREAPPSERVICE_TENANTID_1054ADC5276748E2BEA1D838353DA0E3 }}" -eq "") { throw "TENANTID secret is empty / not available" }
+          if ("${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_327AFB66B00C416193B75FBDB4A7871E }}" -eq "") { throw "SUBSCRIPTIONID secret is empty / not available" }
+          "Secrets are present"
+
 
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets['AZUREAPPSERVICE_CLIENTID_f3afc4b6-bac2-486a-97c8-4bb690f99ba5'] }}
-          tenant-id: ${{ secrets['AZUREAPPSERVICE_TENANTID_dfeb55c2-ed27-4a80-9238-f1e456d04bb8'] }}
-          subscription-id: ${{ secrets['AZUREAPPSERVICE_SUBSCRIPTIONID_66bbe765-5fb0-4e64-b653-1ae60ff28e55'] }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_5455B2F63D5E4861B13B0125AEDADF17 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1054ADC5276748E2BEA1D838353DA0E3 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_327AFB66B00C416193B75FBDB4A7871E }}
+
 
 
 
@@ -90,5 +99,6 @@ jobs:
           app-name: democairo
           slot-name: Production
           package: .
+
 
 
