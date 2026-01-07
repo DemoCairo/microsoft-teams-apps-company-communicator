@@ -21,12 +21,11 @@ jobs:
         with:
           dotnet-version: "6.0.100"
 
-      # Find the solution automatically (so you don't need to guess paths)
       - name: Locate solution file
         shell: pwsh
         run: |
           $sln = Get-ChildItem -Path . -Recurse -Filter *.sln | Select-Object -First 1
-          if (-not $sln) { Write-Error "No .sln file found in repo. Open repo and confirm the solution exists."; exit 1 }
+          if (-not $sln) { Write-Error "No .sln file found in repo. Confirm the solution exists."; exit 1 }
           "SLN_PATH=$($sln.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "SLN_DIR=$($sln.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Using solution: $($sln.FullName)"
@@ -39,7 +38,6 @@ jobs:
         shell: pwsh
         run: dotnet build "$env:SLN_PATH" -c Release --no-restore
 
-      # Try to auto-pick the first Web SDK project and publish it
       - name: Locate web project (.NET Sdk Web)
         shell: pwsh
         run: |
@@ -47,19 +45,19 @@ jobs:
             Where-Object { Select-String -Path $_.FullName -Pattern "Microsoft.NET.Sdk.Web" -Quiet } |
             Select-Object -First 1
 
-          if (-not $web) { Write-Error "No Web project (.NET Sdk Web) found. You must publish the correct csproj manually."; exit 1 }
+          if (-not $web) { Write-Error "No Web project (.NET Sdk Web) found. Publish the correct csproj manually."; exit 1 }
           "WEBPROJ_PATH=$($web.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Using web project: $($web.FullName)"
 
       - name: Publish
         shell: pwsh
-        run: dotnet publish "$env:WEBPROJ_PATH" -c Release -o "${{ env.DOTNET_ROOT }}\myapp" --no-build
+        run: dotnet publish "$env:WEBPROJ_PATH" -c Release -o "${{ env.DOTNET_ROOT }}/myapp" --no-build
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: webapp
-          path: ${{ env.DOTNET_ROOT }}\myapp
+          path: ${{ env.DOTNET_ROOT }}/myapp
 
   deploy:
     runs-on: windows-latest
@@ -73,8 +71,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: webapp
-          path: .
-      - name: Debug - are secrets available?
+          path: package
+
+      - name: Debug - confirm secrets exist (no values printed)
         shell: pwsh
         run: |
           if ("${{ secrets.AZUREAPPSERVICE_CLIENTID_5455B2F63D5E4861B13B0125AEDADF17 }}" -eq "") { throw "CLIENTID secret is empty / not available" }
@@ -82,24 +81,16 @@ jobs:
           if ("${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_327AFB66B00C416193B75FBDB4A7871E }}" -eq "") { throw "SUBSCRIPTIONID secret is empty / not available" }
           "Secrets are present"
 
-
-- name: Login to Azure
-  uses: azure/login@v2
-  with:
-    client-id: ${{ secrets.AZURE_CLIENT_ID }}
-    tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-    subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-
+      - name: Login to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_5455B2F63D5E4861B13B0125AEDADF17 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1054ADC5276748E2BEA1D838353DA0E3 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_327AFB66B00C416193B75FBDB4A7871E }}
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: democairo
           slot-name: Production
-          package: .
-
-
-
-
-
+          package: package
