@@ -83,13 +83,12 @@ jobs:
           "Secrets are present"
 
 
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_5455B2F63D5E4861B13B0125AEDADF17 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1054ADC5276748E2BEA1D838353DA0E3 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_327AFB66B00C416193B75FBDB4A7871E }}
-
+- name: Login to Azure
+  uses: azure/login@v2
+  with:
+    client-id: ${{ secrets.AZURE_CLIENT_ID }}
+    tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+    subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
 
 
@@ -99,6 +98,7 @@ jobs:
           app-name: democairo
           slot-name: Production
           package: .
+
 
 
 
