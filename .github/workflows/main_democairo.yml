@@ -2,8 +2,7 @@ name: Build and deploy ASP.Net Core app to Azure Web App - democairo
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -13,20 +12,18 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # Repo requires this SDK (global.json uses 6.0.100)
-      - name: Set up .NET SDK
+      - name: Set up .NET SDK (match global.json)
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "6.0.100"
 
-      - name: Locate solution file
+      - name: Locate solution (.sln)
         shell: pwsh
         run: |
           $sln = Get-ChildItem -Path . -Recurse -Filter *.sln | Select-Object -First 1
-          if (-not $sln) { Write-Error "No .sln file found in repo."; exit 1 }
+          if (-not $sln) { throw "No .sln found in repo." }
           "SLN_PATH=$($sln.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "SLN_DIR=$($sln.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Using solution: $($sln.FullName)"
@@ -39,52 +36,90 @@ jobs:
         shell: pwsh
         run: dotnet build "$env:SLN_PATH" -c Release --no-restore
 
-      - name: Locate web project (.NET Sdk Web)
+      - name: Locate Web project (Microsoft.NET.Sdk.Web)
         shell: pwsh
         run: |
-          $web = Get-ChildItem -Path $env:SLN_DIR -Recurse -Filter *.csproj |
-            Where-Object { Select-String -Path $_.FullName -Pattern "Microsoft.NET.Sdk.Web" -Quiet } |
-            Select-Object -First 1
-          if (-not $web) { Write-Error "No Web project (.NET Sdk Web) found."; exit 1 }
+          $webProjects = Get-ChildItem -Path $env:SLN_DIR -Recurse -Filter *.csproj |
+            Where-Object { Select-String -Path $_.FullName -Pattern "Microsoft.NET.Sdk.Web" -Quiet }
+
+          if (-not $webProjects -or $webProjects.Count -eq 0) {
+            throw "No Web project (Microsoft.NET.Sdk.Web) found. You are publishing the wrong thing."
+          }
+
+          Write-Host "Web projects found:"
+          $webProjects | ForEach-Object { Write-Host " - $($_.FullName)" }
+
+          $web = $webProjects | Select-Object -First 1
           "WEBPROJ_PATH=$($web.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Using web project: $($web.FullName)"
 
-      - name: Publish
+      - name: Publish to workspace folder
         shell: pwsh
-        run: dotnet publish "$env:WEBPROJ_PATH" -c Release -o "${{ env.DOTNET_ROOT }}\myapp" --no-build
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE "publish"
+          if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
+          dotnet publish "$env:WEBPROJ_PATH" -c Release -o "$publishDir" --no-build
 
-      - name: Upload artifact
+      - name: Validate publish output (MUST NOT be empty)
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE "publish"
+          $files = Get-ChildItem $publishDir -Recurse -File
+          if (-not $files -or $files.Count -eq 0) { throw "Publish output is empty. This is why wwwroot became empty." }
+
+          # For Windows App Service (IIS), web.config is usually required for ASP.NET Core
+          if (-not (Test-Path (Join-Path $publishDir "web.config"))) {
+            throw "web.config is missing in publish output. You likely published the wrong project."
+          }
+
+          Write-Host "Publish output OK. Top-level files:"
+          Get-ChildItem $publishDir | Format-Table -AutoSize
+
+      - name: Zip publish output
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE "publish"
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE "webapp.zip"
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "$publishDir\*" -DestinationPath "$zipPath"
+          Write-Host "Created: $zipPath"
+
+      - name: Upload artifact (zip)
         uses: actions/upload-artifact@v4
         with:
-          name: webapp
-          path: ${{ env.DOTNET_ROOT }}\myapp
+          name: webapp-zip
+          path: webapp.zip
 
   deploy:
     runs-on: windows-latest
     needs: build
-
     permissions:
       id-token: write
       contents: read
 
     steps:
-      - name: Download artifact
+      - name: Download artifact (zip)
         uses: actions/download-artifact@v4
         with:
-          name: webapp
+          name: webapp-zip
           path: .
 
-      # OIDC Login (NO secrets needed)
+      - name: Confirm zip exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ".\webapp.zip")) { throw "webapp.zip not found after download." }
+          Get-Item ".\webapp.zip" | Format-List Name,Length,LastWriteTime
+
       - name: Login to Azure (OIDC)
         uses: azure/login@v2
         with:
-          client-id: "f3afc4b6-bac2-486a-97c8-4bb690f99ba5"
-          tenant-id: "dfeb55c2-ed27-4a80-9238-f1e456d04bb8"
-          subscription-id: "66bbe765-5fb0-4e64-b653-1ae60ff28e55"
+          client-id: f3afc4b6-bac2-486a-97c8-4bb690f99ba5
+          tenant-id: dfeb55c2-ed27-4a80-9238-f1e456d04bb8
+          subscription-id: 66bbe765-5fb0-4e64-b653-1ae60ff28e55
 
-      - name: Deploy to Azure Web App
+      - name: Deploy zip to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: "democairo"
-          slot-name: "Production"
-          package: .
+          app-name: democairo
+          slot-name: Production
+          package: webapp.zip
