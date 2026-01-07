@@ -1,3 +1,6 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
 name: Build and deploy ASP.Net Core app to Azure Web App - democairo
 
 on:
@@ -10,95 +13,53 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: read #This is required for actions/checkout
 
     steps:
       - uses: actions/checkout@v4
 
-      # IMPORTANT: install the SDK your repo wants (global.json says 6.0.100)
-      - name: Set up .NET SDK
+      - name: Set up .NET Core
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "6.0.100"
+          dotnet-version: 'v6.0'
 
-      # Find the solution automatically (so you don't need to guess paths)
-      - name: Locate solution file
-        shell: pwsh
-        run: |
-          $sln = Get-ChildItem -Path . -Recurse -Filter *.sln | Select-Object -First 1
-          if (-not $sln) { Write-Error "No .sln file found in repo. Open repo and confirm the solution exists."; exit 1 }
-          "SLN_PATH=$($sln.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "SLN_DIR=$($sln.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Using solution: $($sln.FullName)"
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
 
-      - name: Restore
-        shell: pwsh
-        run: dotnet restore "$env:SLN_PATH"
-
-      - name: Build
-        shell: pwsh
-        run: dotnet build "$env:SLN_PATH" -c Release --no-restore
-
-      # Try to auto-pick the first Web SDK project and publish it
-      - name: Locate web project (.NET Sdk Web)
-        shell: pwsh
-        run: |
-          $web = Get-ChildItem -Path $env:SLN_DIR -Recurse -Filter *.csproj |
-            Where-Object { Select-String -Path $_.FullName -Pattern "Microsoft.NET.Sdk.Web" -Quiet } |
-            Select-Object -First 1
-
-          if (-not $web) { Write-Error "No Web project (.NET Sdk Web) found. You must publish the correct csproj manually."; exit 1 }
-          "WEBPROJ_PATH=$($web.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Using web project: $($web.FullName)"
-
-      - name: Publish
-        shell: pwsh
-        run: dotnet publish "$env:WEBPROJ_PATH" -c Release -o "${{ env.DOTNET_ROOT }}\myapp" --no-build
+      - name: dotnet publish
+        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
-          name: webapp
-          path: ${{ env.DOTNET_ROOT }}\myapp
+          name: .net-app
+          path: ${{env.DOTNET_ROOT}}/myapp
 
   deploy:
     runs-on: windows-latest
     needs: build
     permissions:
-      id-token: write
-      contents: read
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
 
     steps:
-      - name: Download artifact
+      - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
-          name: webapp
-          path: .
-      - name: Debug - are secrets available?
-        shell: pwsh
-        run: |
-          if ("${{ secrets.AZUREAPPSERVICE_CLIENTID_5455B2F63D5E4861B13B0125AEDADF17 }}" -eq "") { throw "CLIENTID secret is empty / not available" }
-          if ("${{ secrets.AZUREAPPSERVICE_TENANTID_1054ADC5276748E2BEA1D838353DA0E3 }}" -eq "") { throw "TENANTID secret is empty / not available" }
-          if ("${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_327AFB66B00C416193B75FBDB4A7871E }}" -eq "") { throw "SUBSCRIPTIONID secret is empty / not available" }
-          "Secrets are present"
-
-
+          name: .net-app
+      
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_5455B2F63D5E4861B13B0125AEDADF17 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1054ADC5276748E2BEA1D838353DA0E3 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_327AFB66B00C416193B75FBDB4A7871E }}
-
-
-
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_947AD824C0E249BF86AB1BACF5BAAE15 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6169E7CCCE744F7B9E34E4A88FA440A7 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_F4416FE4F80E439C968064BEDF6B1EDB }}
 
       - name: Deploy to Azure Web App
+        id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: democairo
-          slot-name: Production
+          app-name: 'democairo'
+          slot-name: 'Production'
           package: .
-
-
-
+          
